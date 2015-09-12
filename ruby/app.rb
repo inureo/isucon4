@@ -4,6 +4,7 @@ require 'mysql2-cs-bind'
 require 'rack-flash'
 require 'json'
 require 'redis'
+require 'erubis'
 
 module Isucon4
   class App < Sinatra::Base
