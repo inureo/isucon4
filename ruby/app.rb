@@ -14,7 +14,7 @@ module Isucon4
       def config
         @config ||= {
           user_lock_threshold: (ENV['ISU4_USER_LOCK_THRESHOLD'] || 3).to_i,
-          ip_ban_threshold: (ENV['ISU4_IP_BAN_THRESHOLD'] || 10).to_i,
+          ip_ban_threshold: (ENV['ISU4_IP_BAN_THRESHOLD'] || 10).to_i
         }
       end
 
@@ -25,7 +25,7 @@ module Isucon4
           username: ENV['ISU4_DB_USER'] || 'root',
           password: ENV['ISU4_DB_PASSWORD'],
           database: ENV['ISU4_DB_NAME'] || 'isu4_qualifier',
-          reconnect: true,
+          reconnect: true
         )
       end
 
@@ -34,21 +34,21 @@ module Isucon4
       end
 
       def login_log(succeeded, login, user_id = nil)
-        db.xquery("INSERT INTO login_log" \
-                  " (`created_at`, `user_id`, `login`, `ip`, `succeeded`)" \
-                  " VALUES (?,?,?,?,?)",
-                 Time.now, user_id, login, request.ip, succeeded ? 1 : 0)
+        db.xquery('INSERT INTO login_log' \
+                  ' (`created_at`, `user_id`, `login`, `ip`, `succeeded`)' \
+                  ' VALUES (?,?,?,?,?)',
+                  Time.now, user_id, login, request.ip, succeeded ? 1 : 0)
       end
 
       def user_locked?(user)
         return nil unless user
-        log = db.xquery("SELECT COUNT(1) AS failures FROM login_log WHERE user_id = ? AND id > IFNULL((select id from login_log where user_id = ? AND succeeded = 1 ORDER BY id DESC LIMIT 1), 0);", user['id'], user['id']).first
+        log = db.xquery('SELECT COUNT(1) AS failures FROM login_log WHERE user_id = ? AND id > IFNULL((select id from login_log where user_id = ? AND succeeded = 1 ORDER BY id DESC LIMIT 1), 0);', user['id'], user['id']).first
 
         config[:user_lock_threshold] <= log['failures']
       end
 
       def ip_banned?
-        log = db.xquery("SELECT COUNT(1) AS failures FROM login_log WHERE ip = ? AND id > IFNULL((select id from login_log where ip = ? AND succeeded = 1 ORDER BY id DESC LIMIT 1), 0);", request.ip, request.ip).first
+        log = db.xquery('SELECT COUNT(1) AS failures FROM login_log WHERE ip = ? AND id > IFNULL((select id from login_log where ip = ? AND succeeded = 1 ORDER BY id DESC LIMIT 1), 0);', request.ip, request.ip).first
 
         config[:ip_ban_threshold] <= log['failures']
       end
@@ -109,9 +109,7 @@ module Isucon4
 
         last_succeeds.each do |row|
           count = db.xquery('SELECT COUNT(1) AS cnt FROM login_log WHERE ip = ? AND ? < id', row['ip'], row['last_login_id']).first['cnt']
-          if threshold <= count
-            ips << row['ip']
-          end
+          ips << row['ip'] if threshold <= count
         end
 
         ips
@@ -129,9 +127,7 @@ module Isucon4
 
         last_succeeds.each do |row|
           count = db.xquery('SELECT COUNT(1) AS cnt FROM login_log WHERE user_id = ? AND ? < id', row['user_id'], row['last_login_id']).first['cnt']
-          if threshold <= count
-            user_ids << row['login']
-          end
+          user_ids << row['login'] if threshold <= count
         end
 
         user_ids
@@ -150,11 +146,11 @@ module Isucon4
       else
         case err
         when :locked
-          flash[:notice] = "This account is locked."
+          flash[:notice] = 'This account is locked.'
         when :banned
           flash[:notice] = "You're banned."
         else
-          flash[:notice] = "Wrong username or password"
+          flash[:notice] = 'Wrong username or password'
         end
         redirect '/'
       end
@@ -162,7 +158,7 @@ module Isucon4
 
     get '/mypage' do
       unless current_user
-        flash[:notice] = "You must be logged in"
+        flash[:notice] = 'You must be logged in'
         redirect '/'
       end
       erb :mypage, layout: :base
@@ -172,7 +168,7 @@ module Isucon4
       content_type :json
       {
         banned_ips: banned_ips,
-        locked_users: locked_users,
+        locked_users: locked_users
       }.to_json
     end
   end
