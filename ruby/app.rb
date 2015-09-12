@@ -4,9 +4,6 @@ require 'mysql2-cs-bind'
 require 'rack-flash'
 require 'json'
 require 'redis'
-require 'newrelic_rpm'
-
-NewRelic::Agent.after_fork(:force_reconnect => true)
 
 module Isucon4
   class App < Sinatra::Base
@@ -17,19 +14,19 @@ module Isucon4
     helpers do
       def config
         @config ||= {
-          user_lock_threshold: (ENV['ISU4_USER_LOCK_THRESHOLD'] || 3).to_i,
-          ip_ban_threshold: (ENV['ISU4_IP_BAN_THRESHOLD'] || 10).to_i
+            user_lock_threshold: (ENV['ISU4_USER_LOCK_THRESHOLD'] || 3).to_i,
+            ip_ban_threshold: (ENV['ISU4_IP_BAN_THRESHOLD'] || 10).to_i,
         }
       end
 
       def db
         Thread.current[:isu4_db] ||= Mysql2::Client.new(
-          host: ENV['ISU4_DB_HOST'] || 'localhost',
-          port: ENV['ISU4_DB_PORT'] ? ENV['ISU4_DB_PORT'].to_i : nil,
-          username: ENV['ISU4_DB_USER'] || 'root',
-          password: ENV['ISU4_DB_PASSWORD'],
-          database: ENV['ISU4_DB_NAME'] || 'isu4_qualifier',
-          reconnect: true
+            host: ENV['ISU4_DB_HOST'] || 'localhost',
+            port: ENV['ISU4_DB_PORT'] ? ENV['ISU4_DB_PORT'].to_i : nil,
+            username: ENV['ISU4_DB_USER'] || 'root',
+            password: ENV['ISU4_DB_PASSWORD'],
+            database: ENV['ISU4_DB_NAME'] || 'isu4_qualifier',
+            reconnect: true,
         )
       end
 
@@ -41,18 +38,15 @@ module Isucon4
         Redis.current
       end
 
-      # ユーザキーを生成
       def redis_key_user(user)
         "isu4:user:#{user['login']}"
       end
 
-      # 最後のユーザキーを生成
       def redis_key_last(user)
         "isu4:last:#{user['login']}"
       end
 
-      # 次で最後のユーザキーを生成
-      def redis_key_nextlast(user = { id: '*' })
+      def redis_key_nextlast(user = {'id' => '*'})
         "isu4:nextlast:#{user['login']}"
       end
 
@@ -60,10 +54,9 @@ module Isucon4
         "isu4:ip:#{ip}"
       end
 
-      # ログインログの追加
       def login_log(succeeded, login, user = nil)
         kuser = user && redis_key_user(user)
-        kip   = redis_key_ip(ip)
+        kip = redis_key_ip(request.ip)
 
         if succeeded
           klast, knextlast = redis_key_last(user), redis_key_nextlast(user)
@@ -72,13 +65,13 @@ module Isucon4
 
           if redis.exists(knextlast)
             redis.rename(knextlast, klast)
-            redis.hmset(knextlast,  'at', Time.now.to_i, 'ip', request.ip)
+            redis.hmset knextlast, 'at', Time.now.to_i, 'ip', request.ip
           else
-            redis.hmset(knextlast,  'at', Time.now.to_i, 'ip', request.ip)
+            redis.hmset knextlast, 'at', Time.now.to_i, 'ip', request.ip
           end
         else
-          redis.incr(kip)
-          redis.incr(kuser)
+          redis.incr kip
+          redis.incr kuser
         end
       end
 
@@ -86,12 +79,14 @@ module Isucon4
         return nil unless user
         failures = redis.get(redis_key_user(user))
         failures = failures && failures.to_i
+
         failures && config[:user_lock_threshold] <= failures
       end
 
       def ip_banned?
         failures = redis.get(redis_key_ip(request.ip))
         failures = failures && failures.to_i
+
         failures && config[:ip_ban_threshold] <= failures
       end
 
@@ -136,30 +131,29 @@ module Isucon4
       def last_login
         cur = current_user
         return nil unless cur
-        redis.hgetall(redis_key_last(cur) || redis.hgetall(redis_key_nextlast(redis_key_nextlast(cur))))
-
-        db.xquery('SELECT * FROM login_log WHERE succeeded = 1 AND user_id = ? ORDER BY id DESC LIMIT 2', current_user['id']).each.last
+        redis.hgetall(redis_key_last(cur)) || redis.hgetall(redis_key_nextlast(cur))
       end
 
       def banned_ips
         threshold = config[:ip_ban_threshold]
-        redis.keys('isu4:ip:*').select { |key|
+
+        redis.keys('isu4:ip:*').select do |key|
           failures = redis.get(key).to_i
           threshold <= failures
-        }.map { |key|
+        end.map do |key|
           key[8..-1]
-        }
-
+        end
       end
 
       def locked_users
         threshold = config[:user_lock_threshold]
-        redis.keys('isu4:user:*').select { |key|
+
+        redis.keys('isu4:user:*').select do |key|
           failures = redis.get(key).to_i
           threshold <= failures
-        }.map { |key|
+        end.map do |key|
           key[10..-1]
-        }
+        end
       end
     end
 
@@ -174,12 +168,12 @@ module Isucon4
         redirect '/mypage'
       else
         case err
-        when :locked
-          flash[:notice] = 'This account is locked.'
-        when :banned
-          flash[:notice] = "You're banned."
-        else
-          flash[:notice] = 'Wrong username or password'
+          when :locked
+            flash[:notice] = "This account is locked."
+          when :banned
+            flash[:notice] = "You're banned."
+          else
+            flash[:notice] = "Wrong username or password"
         end
         redirect '/'
       end
@@ -187,7 +181,7 @@ module Isucon4
 
     get '/mypage' do
       unless current_user
-        flash[:notice] = 'You must be logged in'
+        flash[:notice] = "You must be logged in"
         redirect '/'
       end
       erb :mypage, layout: :base
@@ -196,8 +190,8 @@ module Isucon4
     get '/report' do
       content_type :json
       {
-        banned_ips: banned_ips,
-        locked_users: locked_users
+          banned_ips: banned_ips,
+          locked_users: locked_users,
       }.to_json
     end
   end
